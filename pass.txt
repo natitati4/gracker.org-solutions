@@ -59,6 +59,6 @@ Second arg: Oh that's where the fun begins. We basically include the addresses i
 
 But now comes the how. Essentially I just broke down the writing to got since if I were to write all the entire address at once, it'll take a long time to print all the chars lol.
 
-Basically wer first put the first byte of the main addr we want to return to in exit@got.plt: 0x38. Then go one higher up, which is the first part of system, 0x6360 (we need to subtract from that the number of chars already written, since it's the same printf.). Then we do the same for the second part of system, 0xf7ed, and lastly, for the second part of the main addr, 0x80486. Then it will
+Basically wer first put the first byte of the main addr we want to return to in exit@got.plt: 0x38. Then go one higher up, which is the first part of system, 0x6360 (we need to subtract from that the number of chars already written, since it's the same printf.), write that in strcpy@got.plt. Then we write the second part of system (f7ed) in strcpy@got.plt+2. Lastly, we write the last part of main addr (0x80486) in exit@got.plt+1.
 essentially call system(a), where a is "/bin/sh;AAAAA...." (that's why I included ;, can input null bytes).
 It was not that easy.
